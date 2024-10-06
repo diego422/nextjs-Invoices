@@ -6,6 +6,7 @@ import {
   InvoicesTable,
   LatestInvoiceRaw,
   Revenue,
+  Customer
 } from './definitions';
 import { formatCurrency } from './utils';
 
@@ -183,7 +184,11 @@ export async function fetchCustomers() {
   }
 }
 
-export async function fetchFilteredCustomers(query: string) {
+export async function fetchFilteredCustomers(
+  query: string,
+  currentPage: number,
+) {
+  const offset = (currentPage - 1) * ITEMS_PER_PAGE;
   try {
     const data = await sql<CustomersTableType>`
 		SELECT
@@ -201,6 +206,7 @@ export async function fetchFilteredCustomers(query: string) {
         customers.email ILIKE ${`%${query}%`}
 		GROUP BY customers.id, customers.name, customers.email, customers.image_url
 		ORDER BY customers.name ASC
+    LIMIT ${ITEMS_PER_PAGE} OFFSET ${offset}
 	  `;
 
     const customers = data.rows.map((customer) => ({
@@ -215,3 +221,52 @@ export async function fetchFilteredCustomers(query: string) {
     throw new Error('Failed to fetch customer table.');
   }
 }
+
+//Customers
+
+export async function fetchCustomersPages(query: string) {
+  try {
+    const count = await sql`SELECT COUNT(*)
+    FROM invoices
+    JOIN customers ON invoices.customer_id = customers.id
+    WHERE
+      customers.name ILIKE ${`%${query}%`} OR
+      customers.email ILIKE ${`%${query}%`} OR
+      invoices.amount::text ILIKE ${`%${query}%`} OR
+      invoices.date::text ILIKE ${`%${query}%`} OR
+      invoices.status ILIKE ${`%${query}%`}
+  `;
+
+    const totalPages = Math.ceil(Number(count.rows[0].count) / ITEMS_PER_PAGE);
+    return totalPages;
+  } catch (error) {
+    console.error('Database Error:', error);
+    throw new Error('Failed to fetch total number of invoices.');
+  }
+}
+
+export async function fetchCustomerById(id: string) {
+  try {
+    const data = await sql<Customer>`
+      SELECT
+        customers.id,
+        customers.name,
+        customers.email,
+        customers.image_url
+      FROM customers
+      WHERE customers.id = ${id};
+    `;
+
+    const customer = data.rows.map((customer) => ({
+      ...customer,
+      // Convert amount from cents to dollars
+      
+    }));
+
+    return customer[0];
+  } catch (error) {
+    console.error('Database Error:', error);
+    throw new Error('Failed to fetch customer.');
+  }
+}
+
